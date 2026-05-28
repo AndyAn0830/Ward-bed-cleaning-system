@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>智慧清床管理平台｜28西病房</title>
+
+<!-- 中文字型 -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+<!-- React（用於畫面渲染，免安裝、可直接放 GitHub Pages） -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+
+<!-- Firebase（雲端即時資料庫，部署後負責跨裝置同步） -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+  :root{
+    --bg:#eef1f4; --surface:#ffffff; --surface-2:#f7f9fa;
+    --ink:#1c2b33; --muted:#69797f; --line:#dde3e7;
+    --primary:#0d7d8a; --primary-dark:#0a5d66;
+    --occupied:#8896a0; --pending:#e0852b; --cleaning:#2f7fd1; --available:#2f9e6e;
+    --urgent:#d64545; --special:#8a5cc4; --normal:#0d7d8a;
+    --shadow:0 1px 3px rgba(20,40,50,.08), 0 6px 18px rgba(20,40,50,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased;
+  }
+  #root{min-height:100vh;}
+
+  /* 頂部列 */
+  .topbar{
+    background:var(--surface); border-bottom:1px solid var(--line);
+    padding:10px 20px; display:flex; align-items:center; gap:16px;
+    flex-wrap:wrap; position:sticky; top:0; z-index:50;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .logo{
+    width:38px;height:38px;border-radius:9px;
+    background:linear-gradient(135deg,var(--primary),var(--primary-dark));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;
+  }
+  .brand h1{font-size:16px;font-weight:900;line-height:1.2;}
+  .brand .sub{font-size:12px;color:var(--muted);font-weight:500;}
+
+  .roletabs{display:flex;gap:4px;background:var(--surface-2);padding:4px;border-radius:10px;}
+  .roletabs button{
+    border:0;background:transparent;padding:8px 14px;border-radius:7px;
+    font-family:inherit;font-size:13px;font-weight:700;color:var(--muted);cursor:pointer;
+  }
+  .roletabs button.on{background:var(--surface);color:var(--primary);box-shadow:var(--shadow);}
+
+  .conn{
+    margin-left:auto;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  }
+  .badge{
+    display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;
+    padding:5px 10px;border-radius:20px;
+  }
+  .badge.online{background:#e3f5ec;color:#1f7a52;}
+  .badge.demo{background:#fdf1de;color:#9a6212;}
+  .dot{width:8px;height:8px;border-radius:50%;}
+  .clock{font-size:13px;color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums;}
+  .portal-link{
+    font-size:12px;font-weight:700;text-decoration:none;color:var(--primary);
+    border:1px solid var(--line);padding:6px 12px;border-radius:8px;
+  }
+
+  .wrap{max-width:1240px;margin:0 auto;padding:20px;}
+
+  /* 卡片與通用 */
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);}
+  .section-title{font-size:15px;font-weight:900;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+  .hint{font-size:12px;color:var(--muted);font-weight:500;}
+
+  /* 圖例 */
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:14px;}
+  .legend span{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--muted);}
+  .legend i{width:13px;height:13px;border-radius:4px;display:inline-block;}
+
+  /* 病床網格 */
+  .bedgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px;}
+  .bed{
+    border-radius:12px;padding:12px;cursor:pointer;border:1.5px solid transparent;
+    transition:transform .08s ease; position:relative; min-height:104px;
+    display:flex;flex-direction:column;gap:6px;
+  }
+  .bed:hover{transform:translateY(-2px);}
+  .bed .room{font-size:18px;font-weight:900;font-variant-numeric:tabular-nums;}
+  .bed .st{font-size:12.5px;font-weight:700;}
+  .bed .meta{font-size:11.5px;font-weight:600;margin-top:auto;}
+  .bed.occupied{background:#f1f3f4;border-color:#e2e6e8;}
+  .bed.occupied .st{color:var(--occupied);}
+  .bed.pending{background:#fdf3e6;border-color:#f3d7af;}
+  .bed.pending .st{color:var(--pending);}
+  .bed.cleaning{background:#e9f2fb;border-color:#bcd8f1;}
+  .bed.cleaning .st{color:var(--cleaning);}
+  .bed.available{background:#e7f6ee;border-color:#b9e3cb;}
+  .bed.available .st{color:var(--available);}
+  .bed .tag{
+    position:absolute;top:8px;right:8px;font-size:10.5px;font-weight:900;
+    padding:2px 7px;border-radius:20px;color:#fff;
+  }
+  .bed .alert-flag{
+    margin-top:auto;font-size:11px;font-weight:800;color:var(--urgent);
+    background:#fbe6e6;padding:3px 6px;border-radius:6px;text-align:center;
+  }
+  .overdue{color:var(--urgent)!important;}
+
+  /* 按鈕 */
+  .btn{
+    border:0;border-radius:9px;font-family:inherit;font-weight:800;font-size:13px;
+    padding:10px 16px;cursor:pointer;
+  }
+  .btn-primary{background:var(--primary);color:#fff;}
+  .btn-primary:hover{background:var(--primary-dark);}
+  .btn-ghost{background:var(--surface-2);color:var(--ink);border:1px solid var(--line);}
+  .btn-danger{background:#fbe6e6;color:var(--urgent);}
+  .btn-block{width:100%;}
+  .btn:disabled{opacity:.45;cursor:not-allowed;}
+
+  /* 彈窗 */
+  .overlay{
+    position:fixed;inset:0;background:rgba(15,30,38,.45);z-index:100;
+    display:flex;align-items:center;justify-content:center;padding:18px;
+  }
+  .modal{background:var(--surface);border-radius:16px;width:100%;max-width:420px;padding:22px;}
+  .modal h3{font-size:18px;font-weight:900;margin-bottom:4px;}
+  .modal .close{float:right;border:0;background:var(--surface-2);width:30px;height:30px;border-radius:8px;cursor:pointer;font-size:16px;}
+
+  .typepick{display:flex;flex-direction:column;gap:8px;margin:14px 0;}
+  .typepick button{
+    text-align:left;border:1.5px solid var(--line);background:var(--surface);
+    border-radius:10px;padding:11px 13px;cursor:pointer;font-family:inherit;
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .typepick button.on{border-color:var(--primary);background:#eef8f9;}
+  .typepick .tname{font-weight:800;font-size:13.5px;}
+  .typepick .tsla{font-size:11.5px;color:var(--muted);font-weight:700;}
+  textarea{
+    width:100%;border:1.5px solid var(--line);border-radius:10px;padding:10px;
+    font-family:inherit;font-size:13px;resize:vertical;min-height:62px;
+  }
+
+  /* KPI */
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px;}
+  .kpi{padding:14px 16px;}
+  .kpi .label{font-size:12px;color:var(--muted);font-weight:700;}
+  .kpi .num{font-size:30px;font-weight:900;font-variant-numeric:tabular-nums;margin-top:4px;}
+  .kpi .unit{font-size:13px;font-weight:700;color:var(--muted);}
+
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;padding:10px;color:var(--muted);font-size:11.5px;font-weight:800;border-bottom:2px solid var(--line);}
+  td{padding:10px;border-bottom:1px solid var(--line);font-weight:600;}
+  tr:last-child td{border-bottom:0;}
+  select{font-family:inherit;font-size:12.5px;padding:5px 8px;border:1px solid var(--line);border-radius:7px;}
+
+  .pill{display:inline-block;font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;color:#fff;}
+
+  /* 清潔人員工作卡 */
+  .joblist{display:flex;flex-direction:column;gap:12px;}
+  .jobcard{padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
+  .jobcard .top{display:flex;justify-content:space-between;align-items:flex-start;}
+  .jobcard .room2{font-size:22px;font-weight:900;}
+  .jobcard .actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .empty{text-align:center;padding:40px 20px;color:var(--muted);font-weight:600;font-size:13.5px;}
+
+  .toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;}
+  .switch{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;cursor:pointer;}
+  .switch input{width:0;height:0;opacity:0;}
+  .track{width:42px;height:24px;background:var(--line);border-radius:20px;position:relative;transition:.15s;}
+  .track::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:.15s;}
+  .switch input:checked + .track{background:var(--primary);}
+  .switch input:checked + .track::after{transform:translateX(18px);}
+
+  .me-picker{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .me-picker button{
+    border:1.5px solid var(--line);background:var(--surface);border-radius:20px;
+    padding:8px 16px;font-family:inherit;font-weight:800;font-size:13px;cursor:pointer;
+  }
+  .me-picker button.on{background:var(--primary);color:#fff;border-color:var(--primary);}
+
+  /* 角色選擇畫面 */
+  .role-select{max-width:920px;margin:36px auto;padding:20px;}
+  .role-select h2{font-size:24px;font-weight:900;text-align:center;margin-bottom:6px;letter-spacing:.5px;}
+  .role-select .sub2{text-align:center;color:var(--muted);font-size:13.5px;margin-bottom:28px;font-weight:600;}
+  .role-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px;}
+  .role-card{
+    background:var(--surface);border:1.5px solid var(--line);border-radius:16px;
+    padding:26px 22px;cursor:pointer;text-align:left;font-family:inherit;
+    transition:transform .12s,border-color .12s,box-shadow .12s;
+    display:flex;flex-direction:column;gap:8px;min-height:180px;
+  }
+  .role-card:hover{transform:translateY(-3px);border-color:var(--primary);box-shadow:var(--shadow);}
+  .role-card .icon{font-size:34px;margin-bottom:4px;}
+  .role-card .role-title{font-size:18px;font-weight:900;color:var(--primary);}
+  .role-card .desc{font-size:13px;color:var(--ink);font-weight:600;line-height:1.55;}
+  .role-card .who{font-size:11.5px;color:var(--muted);font-weight:700;margin-top:auto;padding-top:8px;}
+
+  /* 頂部目前身分標示與切換按鈕 */
+  .current-role{display:flex;align-items:center;gap:8px;}
+  .current-role .label{font-size:12.5px;color:var(--muted);font-weight:700;}
+  .current-role .name{font-size:13.5px;color:var(--primary);font-weight:900;}
+  .role-switch-btn{
+    border:1px solid var(--line);background:var(--surface);
+    font-family:inherit;font-size:12px;font-weight:800;
+    padding:6px 11px;border-radius:8px;cursor:pointer;color:var(--ink);
+  }
+  .role-switch-btn:hover{background:var(--surface-2);border-color:var(--primary);}
+
+  @media(max-width:560px){
+    .bedgrid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));}
+    .wrap{padding:14px;}
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo } = React;
+
+/* ============================================================
+   設定區：部署前請修改這 4 個地方
+   ============================================================ */
+
+// 1. 病房整合入口網址（填了才會出現「返回主畫面」按鈕；不需要可留空字串）
+const PORTAL_URL = "";
+
+// 2. Firebase 設定（到 Firebase 主控台 > 專案設定 複製貼上）
+//    維持「請填入」字樣 = 示範模式（資料不會儲存，僅供體驗）
+//    填入正確資料後 = 雲端模式（電腦/平板/手機即時同步）
+const FIREBASE_CONFIG = {
+  apiKey:      "請填入_API_KEY",
+  authDomain:  "請填入_PROJECT.firebaseapp.com",
+  databaseURL: "請填入_DATABASE_URL",
+  projectId:   "請填入_PROJECT_ID",
+};
+
+// 3. 病房名稱
+const WARD_NAME = "28西病房";
+
+// 4. 清潔人員名單（依實際人員修改即可）
+//    mdro:true 代表此人員受過隔離房／MDRO 處理訓練，可承接「特殊清床」
+const CLEANERS = [
+  { id:"c1", name:"王美玲", mdro:true  },
+  { id:"c2", name:"陳淑芬", mdro:true  },
+  { id:"c3", name:"林志明", mdro:false },
+  { id:"c4", name:"張惠如", mdro:true  },
+];
+
+// 5. AI 智能派工的權重（數字越大代表該因素越被重視，可依現場狀況微調）
+const DISPATCH_WEIGHTS = {
+  load:     10,  // 工作量：手上每多一件工單，分數 +10
+  distance:  1,  // 距離：與該病床房號每差 1 號，分數 +1（急件不計距離）
+  fairness:  2,  // 公平性：今日已完成越多，分數略增，讓工作較平均分配
+};
+
+/* ============================================================
+   以下為系統內容，一般情況不需修改
+   ============================================================ */
+
+// 28西病房床位（取自提案計畫書第四節）
+const BEDS = ["2851-1","2851-2","2852-1","2852-2","2853-1","2853-2","2855-1","2855-2",
+  "2856","2858","2859-1","2859-2","2860-1","2860-2","2860-3","2860-4",
+  "2861-1","2861-2","2861-3","2861-4","2862-1","2862-2","2862-3","2862-4",
+  "2863-1","2863-2","2863-3","2863-4","2865-1","2865-2","2865-3","2865-4",
+  "2866-1","2866-2","2866-3","2866-4"];
+
+// 清床類型：sla = 目標完成時間（分鐘），超過即視為超時
+const JOB_TYPES = {
+  "急件":{ label:"急件清床",          sla:20, color:"var(--urgent)"  },
+  "特殊":{ label:"特殊清床(隔離/MDRO)", sla:60, color:"var(--special)" },
+  "一般":{ label:"一般清床",          sla:40, color:"var(--normal)"  },
+};
+const TYPE_ORDER = { "急件":0, "特殊":1, "一般":2 };
+
+// 床位狀態文字
+const BED_LABEL = { occupied:"使用中", pending:"待清床", cleaning:"清床中", available:"可入住" };
+const ROLE_LABELS = { ward:"病房端", cleaner:"清潔人員", manager:"管理端" };
+
+const cleanerName = id => (CLEANERS.find(c=>c.id===id)||{}).name || "—";
+
+// 由床號取得基準房號數字，用於估算距離（例如 "2860-3" → 2860）
+const baseRoom = bedId => parseInt(String(bedId).split("-")[0],10) || 0;
+
+// 時間格式
+function fmtDur(ms){
+  if(ms<0) ms=0;
+  const m=Math.floor(ms/60000);
+  if(m<60) return m+" 分鐘";
+  return Math.floor(m/60)+" 小時 "+(m%60)+" 分";
+}
+function fmtClock(ts){
+  const d=new Date(ts);
+  return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+}
+
+/* ---------- Firebase 啟動 ---------- */
+let FB_ON = false, fbDB = null;
+(function initFirebase(){
+  const configured = FIREBASE_CONFIG.databaseURL && !FIREBASE_CONFIG.databaseURL.includes("請填入");
+  if(!configured || typeof firebase === "undefined") return;
+  try{ firebase.initializeApp(FIREBASE_CONFIG); fbDB = firebase.database(); FB_ON = true; }
+  catch(e){ console.error("Firebase 啟動失敗：", e); }
+})();
+
+/* ---------- 示範模式的種子資料（讓畫面一打開就有內容可看） ---------- */
+function makeSeed(){
+  const now = Date.now();
+  const jobs = {}, beds = {};
+  BEDS.forEach(b=> beds[b]="occupied");        // 預設全部使用中
+  const add = (bedId,type,status,minsAgo,assignedTo,startedMinsAgo,doneMinsAgo,reason)=>{
+    const id="seed_"+bedId;
+    jobs[id]={ id,bedId,type,status,note:"",assignedTo:assignedTo||"",dispatchReason:reason||"",
+      createdAt:now-minsAgo*60000,
+      startedAt: startedMinsAgo!=null? now-startedMinsAgo*60000:0,
+      completedAt: doneMinsAgo!=null? now-doneMinsAgo*60000:0,
+      patientNotLeftAt:0 };
+  };
+  add("2856","急件","清床中",18,"c1",10,null,"急件，指派給最快能投入的人員");          beds["2856"]="cleaning";
+  add("2860-3","一般","已派工",12,"c2",null,null,"工作量較少（0 件）、鄰近此病床");           beds["2860-3"]="pending";
+  add("2862-1","特殊","清床中",35,"c4",22,null,"具隔離房處理資格、工作量較少（0 件）");        beds["2862-1"]="cleaning";
+  add("2865-2","一般","待派工",6,"");              beds["2865-2"]="pending";
+  add("2851-1","一般","已完成",80,"c1",70,40);     beds["2851-1"]="available";
+  add("2863-4","急件","已完成",55,"c4",48,38);     beds["2863-4"]="occupied";
+  return { jobs, beds };
+}
+
+/* ============================================================
+   主程式
+   ============================================================ */
+function App(){
+  const [role,setRole]       = useState(null);          // null=未選擇, ward/cleaner/manager
+  const [jobs,setJobs]       = useState({});
+  const [bedStatus,setBed]   = useState({});
+  const [settings,setSet]    = useState({ autoDispatch:true });
+  const [now,setNow]         = useState(Date.now());
+
+  // 每 20 秒更新一次「等待時間」顯示
+  useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),20000); return ()=>clearInterval(t); },[]);
+
+  // 載入資料：雲端模式監聽 Firebase；示範模式載入種子資料
+  useEffect(()=>{
+    if(FB_ON){
+      const rJ=fbDB.ref("cleanbed/jobs"),     rB=fbDB.ref("cleanbed/beds"), rS=fbDB.ref("cleanbed/settings");
+      rJ.on("value",s=>setJobs(s.val()||{}));
+      rB.on("value",s=>setBed(s.val()||{}));
+      rS.on("value",s=>setSet(s.val()||{autoDispatch:true}));
+      return ()=>{ rJ.off(); rB.off(); rS.off(); };
+    }else{
+      const seed=makeSeed(); setJobs(seed.jobs); setBed(seed.beds);
+    }
+  },[]);
+
+  // 寫入（兩種模式共用）
+  const saveJob = j => FB_ON ? fbDB.ref("cleanbed/jobs/"+j.id).set(j) : setJobs(p=>({...p,[j.id]:j}));
+  const saveBed = (id,st)=> FB_ON ? fbDB.ref("cleanbed/beds/"+id).set(st) : setBed(p=>({...p,[id]:st}));
+  const delJob  = id => FB_ON ? fbDB.ref("cleanbed/jobs/"+id).remove() : setJobs(p=>{const n={...p};delete n[id];return n;});
+  const saveSet = s => FB_ON ? fbDB.ref("cleanbed/settings").set(s) : setSet(s);
+
+  const getBed = id => bedStatus[id] || "occupied";
+  const jobList = useMemo(()=>Object.values(jobs),[jobs]);
+
+  // 找出某床「進行中」的工單（尚未完成的）
+  const activeJobOf = id => jobList.find(j=>j.bedId===id && j.status!=="已完成");
+
+  // AI 智能派工引擎：依工作量、距離、急件、隔離資格與公平性綜合計分，分數最低者優先
+  function pickCleaner(bedId, type, jobsArr){
+    // 統計每位清潔人員目前的狀態
+    let cand = CLEANERS.map(c=>{
+      const active = jobsArr.filter(j=>j.assignedTo===c.id && (j.status==="已派工"||j.status==="清床中"));
+      // 目前位置：最近一筆進行中工單的房號
+      const recent = active.slice().sort((a,b)=>b.createdAt-a.createdAt)[0];
+      const loc    = recent ? baseRoom(recent.bedId) : null;
+      const dist   = loc!=null ? Math.abs(loc - baseRoom(bedId)) : 0;
+      const done   = jobsArr.filter(j=>j.assignedTo===c.id && j.status==="已完成").length;
+      return { c, load:active.length, loc, dist, done };
+    });
+
+    // 特殊（隔離／MDRO）案件：只考慮具處理資格的人員
+    if(type==="特殊"){
+      const trained = cand.filter(x=>x.c.mdro);
+      if(trained.length) cand = trained;
+    }
+
+    // 計分（分數越低越優先）；急件以「最快能投入」為主，不計距離
+    const W = DISPATCH_WEIGHTS;
+    const distW = type==="急件" ? 0 : W.distance;
+    cand.forEach(x=>{
+      x.score = x.load*W.load + Math.min(x.dist,30)*distW + x.done*W.fairness;
+    });
+    cand.sort((a,b)=> a.score-b.score);
+    const best = cand[0];
+    if(!best) return null;
+
+    // 組合「派工理由」，讓管理者一看就懂系統為何這樣派
+    const r=[];
+    if(type==="急件")            r.push("急件，指派給最快能投入的人員");
+    if(best.load===0)            r.push("目前無在手工單");
+    else                         r.push("工作量較少（"+best.load+" 件）");
+    if(type!=="急件" && best.loc!=null && best.dist<=5) r.push("鄰近此病床");
+    if(type==="特殊")            r.push("具隔離房處理資格");
+    return { id:best.c.id, reason:r.join("、") };
+  }
+
+  /* ---- 動作 ---- */
+  function notifyClean(bedId,type,note){
+    const id="j"+Date.now()+Math.floor(Math.random()*1000);
+    const job={ id,bedId,type,note:note||"",status:"待派工",assignedTo:"",dispatchReason:"",
+      createdAt:Date.now(),startedAt:0,completedAt:0,patientNotLeftAt:0 };
+    if(settings.autoDispatch){
+      const pick=pickCleaner(bedId,type,jobList);
+      if(pick){ job.assignedTo=pick.id; job.status="已派工"; job.dispatchReason=pick.reason; }
+    }
+    saveJob(job); saveBed(bedId,"pending");
+  }
+  const startJob   = j => { saveJob({...j,status:"清床中",startedAt:Date.now(),patientNotLeftAt:0}); saveBed(j.bedId,"cleaning"); };
+  const notLeft    = j => { saveJob({...j,patientNotLeftAt:Date.now()}); };
+  const completeJob= j => { saveJob({...j,status:"已完成",completedAt:Date.now(),startedAt:j.startedAt||Date.now()}); saveBed(j.bedId,"available"); };
+  const cancelJob  = j => { delJob(j.id); saveBed(j.bedId,"occupied"); };
+  const admitBed   = id=> saveBed(id,"occupied");
+  const reassign   = (j,cid)=> saveJob({...j,assignedTo:cid,status:j.status==="待派工"?"已派工":j.status});
+  const takeJob    = (j,cid)=> saveJob({...j,assignedTo:cid,status:"已派工"});
+  const toggleAuto = ()=> saveSet({...settings,autoDispatch:!settings.autoDispatch});
+
+  // 重新優化派工：把所有「尚未開始」的工單清空後，依緊急度重新計分分派
+  function reoptimize(){
+    // 先把待派工／已派工的工單視為未指派
+    let working = jobList.map(j=>
+      (j.status==="待派工"||j.status==="已派工") ? {...j,assignedTo:"",status:"待派工",dispatchReason:""} : j
+    );
+    // 依緊急度與通知時間排序後逐筆指派（邊指派邊累計工作量）
+    const queue = working
+      .filter(j=>j.status==="待派工")
+      .sort((a,b)=>(TYPE_ORDER[a.type]-TYPE_ORDER[b.type])||(a.createdAt-b.createdAt));
+    queue.forEach(job=>{
+      const pick=pickCleaner(job.bedId,job.type,working);
+      if(pick){
+        working = working.map(j=> j.id===job.id
+          ? {...j,assignedTo:pick.id,status:"已派工",dispatchReason:pick.reason} : j);
+      }
+    });
+    // 只寫回有變動的工單
+    working.forEach(j=>{
+      const o=jobs[j.id];
+      if(o && o.assignedTo!==j.assignedTo) saveJob(j);
+    });
+  }
+
+  return (
+    <div>
+      <header className="topbar">
+        <div className="brand">
+          <div className="logo">🛏️</div>
+          <div>
+            <h1>智慧清床管理平台</h1>
+            <div className="sub">花蓮慈濟醫院 · {WARD_NAME}</div>
+          </div>
+        </div>
+        {role &&
+          <div className="current-role">
+            <span className="label">目前身分</span>
+            <span className="name">{ROLE_LABELS[role]}</span>
+            <button className="role-switch-btn" onClick={()=>setRole(null)}>切換</button>
+          </div>}
+        <div className="conn">
+          <span className="clock">{fmtClock(now)}</span>
+          {FB_ON
+            ? <span className="badge online"><i className="dot" style={{background:"#1f7a52"}}></i>已連線雲端</span>
+            : <span className="badge demo"><i className="dot" style={{background:"#9a6212"}}></i>示範模式</span>}
+          {PORTAL_URL ? <a className="portal-link" href={PORTAL_URL}>← 返回主畫面</a> : null}
+        </div>
+      </header>
+
+      {!role
+        ? <RoleSelector onPick={setRole}/>
+        : <div className="wrap">
+            {role==="ward" &&
+              <WardView beds={BEDS} getBed={getBed} activeJobOf={activeJobOf} now={now}
+                notifyClean={notifyClean} cancelJob={cancelJob} admitBed={admitBed}/>}
+            {role==="cleaner" &&
+              <CleanerView jobList={jobList} now={now}
+                startJob={startJob} notLeft={notLeft} completeJob={completeJob} takeJob={takeJob}/>}
+            {role==="manager" &&
+              <ManagerView jobList={jobList} getBed={getBed} now={now}
+                settings={settings} toggleAuto={toggleAuto} reassign={reassign} reoptimize={reoptimize}/>}
+          </div>}
+    </div>
+  );
+}
+
+/* ---------- 判斷是否超時 ---------- */
+function isOverdue(job,now){
+  const sla=JOB_TYPES[job.type].sla*60000;
+  if(job.status==="已完成") return (job.completedAt-job.createdAt)>sla;
+  return (now-job.createdAt)>sla;
+}
+
+/* ============================================================
+   病房端：病床戰情看板
+   ============================================================ */
+function WardView({beds,getBed,activeJobOf,now,notifyClean,cancelJob,admitBed}){
+  const [selected,setSelected]=useState(null);
+
+  return (
+    <div>
+      <div className="legend">
+        <span><i style={{background:"#8896a0"}}></i>使用中</span>
+        <span><i style={{background:"#e0852b"}}></i>待清床</span>
+        <span><i style={{background:"#2f7fd1"}}></i>清床中</span>
+        <span><i style={{background:"#2f9e6e"}}></i>可入住</span>
+        <span style={{color:"var(--urgent)"}}>🔔 病患未離床通知</span>
+      </div>
+
+      <div className="bedgrid">
+        {beds.map(bedId=>{
+          const st=getBed(bedId);
+          const job=activeJobOf(bedId);
+          const overdue = job && isOverdue(job,now);
+          return (
+            <div key={bedId} className={"bed "+st} onClick={()=>setSelected(bedId)}>
+              {job && <span className="tag" style={{background:JOB_TYPES[job.type].color}}>{job.type}</span>}
+              <div className="room">{bedId}</div>
+              <div className="st">{BED_LABEL[st]}</div>
+              {job && (st==="pending"||st==="cleaning") &&
+                <div className={"meta "+(overdue?"overdue":"")}>
+                  {overdue?"⚠ 已超時 ":"已等候 "}{fmtDur(now-job.createdAt)}
+                </div>}
+              {job && job.patientNotLeftAt>0 && st!=="cleaning" &&
+                <div className="alert-flag">🔔 病患未離床</div>}
+            </div>
+          );
+        })}
+      </div>
+
+      {selected &&
+        <BedModal bedId={selected} st={getBed(selected)} job={activeJobOf(selected)} now={now}
+          onClose={()=>setSelected(null)}
+          notifyClean={notifyClean} cancelJob={cancelJob} admitBed={admitBed}/>}
+    </div>
+  );
+}
+
+/* ---------- 病床彈窗 ---------- */
+function BedModal({bedId,st,job,now,onClose,notifyClean,cancelJob,admitBed}){
+  const [type,setType]=useState("一般");
+  const [note,setNote]=useState("");
+
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <button className="close" onClick={onClose}>✕</button>
+        <h3>{bedId}</h3>
+        <div className="hint" style={{marginBottom:"6px"}}>目前狀態：{BED_LABEL[st]}</div>
+
+        {/* 使用中 → 可發出清床通知 */}
+        {st==="occupied" && <>
+          <div className="section-title" style={{marginTop:"14px",fontSize:"14px"}}>發出清床通知</div>
+          <div className="hint">病患完成出院批價後，請選擇清床類型：</div>
+          <div className="typepick">
+            {Object.keys(JOB_TYPES).map(k=>(
+              <button key={k} className={type===k?"on":""} onClick={()=>setType(k)}>
+                <span className="tname">{JOB_TYPES[k].label}</span>
+                <span className="tsla">目標 {JOB_TYPES[k].sla} 分鐘</span>
+              </button>
+            ))}
+          </div>
+          <textarea placeholder="備註（選填，例如：床邊有個人物品待家屬領回）"
+            value={note} onChange={e=>setNote(e.target.value)}/>
+          <button className="btn btn-primary btn-block" style={{marginTop:"12px"}}
+            onClick={()=>{ notifyClean(bedId,type,note); onClose(); }}>
+            送出清床通知
+          </button>
+        </>}
+
+        {/* 待清床 */}
+        {st==="pending" && job && <>
+          <InfoRow label="清床類型" value={JOB_TYPES[job.type].label}/>
+          <InfoRow label="負責清潔人員" value={job.assignedTo?cleanerName(job.assignedTo):"等待派工中"}/>
+          <InfoRow label="已等候" value={fmtDur(now-job.createdAt)}/>
+          {job.note && <InfoRow label="備註" value={job.note}/>}
+          {job.patientNotLeftAt>0 &&
+            <div className="alert-flag" style={{margin:"10px 0"}}>🔔 清潔人員回報「病患尚未離床」，請護理站協助處理</div>}
+          <div className="hint" style={{marginTop:"10px"}}>已通知清潔人員，請耐心等候。</div>
+          <button className="btn btn-danger btn-block" style={{marginTop:"12px"}}
+            onClick={()=>{ cancelJob(job); onClose(); }}>
+            取消此清床通知
+          </button>
+        </>}
+
+        {/* 清床中 */}
+        {st==="cleaning" && job && <>
+          <InfoRow label="清床類型" value={JOB_TYPES[job.type].label}/>
+          <InfoRow label="負責清潔人員" value={cleanerName(job.assignedTo)}/>
+          <InfoRow label="開始時間" value={fmtClock(job.startedAt)}/>
+          <div className="hint" style={{marginTop:"10px"}}>清潔作業進行中，完成後狀態會自動更新。</div>
+        </>}
+
+        {/* 可入住 */}
+        {st==="available" && <>
+          <div className="alert-flag" style={{background:"#e7f6ee",color:"#1f7a52",margin:"12px 0"}}>
+            ✓ 清潔已完成，此床位可安排新病人入住
+          </div>
+          <button className="btn btn-primary btn-block"
+            onClick={()=>{ admitBed(bedId); onClose(); }}>
+            登記新病人入住
+          </button>
+        </>}
+      </div>
+    </div>
+  );
+}
+function InfoRow({label,value}){
+  return (
+    <div style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:"1px solid var(--line)"}}>
+      <span style={{color:"var(--muted)",fontSize:"13px",fontWeight:700}}>{label}</span>
+      <span style={{fontSize:"13px",fontWeight:800}}>{value}</span>
+    </div>
+  );
+}
+
+/* ============================================================
+   清潔人員端：我的清床工單
+   ============================================================ */
+function CleanerView({jobList,now,startJob,notLeft,completeJob,takeJob}){
+  const [me,setMe]=useState(CLEANERS[0].id);
+
+  // 我的工單（已派工 / 清床中）+ 尚未派工的待接單工單
+  const sorter=(a,b)=> (TYPE_ORDER[a.type]-TYPE_ORDER[b.type]) || (a.createdAt-b.createdAt);
+  const mine    = jobList.filter(j=>j.assignedTo===me && (j.status==="已派工"||j.status==="清床中")).sort(sorter);
+  const pool    = jobList.filter(j=>!j.assignedTo && j.status==="待派工").sort(sorter);
+  const doneToday = jobList.filter(j=>j.assignedTo===me && j.status==="已完成").length;
+
+  return (
+    <div>
+      <div className="section-title">我是：</div>
+      <div className="me-picker">
+        {CLEANERS.map(c=>(
+          <button key={c.id} className={me===c.id?"on":""} onClick={()=>setMe(c.id)}>{c.name}</button>
+        ))}
+      </div>
+
+      <div className="kpis">
+        <div className="card kpi"><div className="label">待處理</div><div className="num">{mine.filter(j=>j.status==="已派工").length}</div></div>
+        <div className="card kpi"><div className="label">進行中</div><div className="num" style={{color:"var(--cleaning)"}}>{mine.filter(j=>j.status==="清床中").length}</div></div>
+        <div className="card kpi"><div className="label">今日完成</div><div className="num" style={{color:"var(--available)"}}>{doneToday}</div></div>
+      </div>
+
+      <div className="section-title">🧹 我的工單</div>
+      <div className="joblist">
+        {mine.length===0 && <div className="card empty">目前沒有指派給你的清床工單</div>}
+        {mine.map(j=>(
+          <JobCard key={j.id} job={j} now={now}>
+            {j.status==="已派工" &&
+              <button className="btn btn-primary" onClick={()=>startJob(j)}>開始清床</button>}
+            {j.status==="清床中" &&
+              <button className="btn btn-primary" onClick={()=>completeJob(j)}>完成清床</button>}
+            <button className="btn btn-ghost" onClick={()=>notLeft(j)}>病患未離床</button>
+          </JobCard>
+        ))}
+      </div>
+
+      {pool.length>0 && <>
+        <div className="section-title" style={{marginTop:"22px"}}>📋 待接單工單</div>
+        <div className="joblist">
+          {pool.map(j=>(
+            <JobCard key={j.id} job={j} now={now}>
+              <button className="btn btn-primary" onClick={()=>takeJob(j,me)}>我來接單</button>
+            </JobCard>
+          ))}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+function JobCard({job,now,children}){
+  const overdue=isOverdue(job,now);
+  return (
+    <div className="card jobcard">
+      <div className="top">
+        <div>
+          <div className="room2">{job.bedId}</div>
+          <div className="hint">通知於 {fmtClock(job.createdAt)}</div>
+        </div>
+        <span className="pill" style={{background:JOB_TYPES[job.type].color}}>{JOB_TYPES[job.type].label}</span>
+      </div>
+      <div className={"hint "+(overdue?"overdue":"")} style={{fontWeight:800}}>
+        {job.status==="清床中"?"清潔進行中 · ":""}
+        {overdue?"⚠ 已超過目標時間 · ":""}
+        已等候 {fmtDur(now-job.createdAt)}（目標 {JOB_TYPES[job.type].sla} 分）
+      </div>
+      {job.dispatchReason &&
+        <div className="hint" style={{color:"var(--primary)",fontWeight:700}}>🤖 系統派工：{job.dispatchReason}</div>}
+      {job.note && <div className="hint">📝 {job.note}</div>}
+      {job.patientNotLeftAt>0 &&
+        <div className="alert-flag">🔔 已回報「病患未離床」（{fmtClock(job.patientNotLeftAt)}）</div>}
+      <div className="actions">{children}</div>
+    </div>
+  );
+}
+
+/* ============================================================
+   管理端：儀表板 + 派工清單 + 人員績效
+   ============================================================ */
+function ManagerView({jobList,getBed,now,settings,toggleAuto,reassign,reoptimize}){
+  const startOfDay=new Date(); startOfDay.setHours(0,0,0,0);
+  const todayStart=startOfDay.getTime();
+
+  const active   = jobList.filter(j=>j.status!=="已完成");
+  const pending  = active.filter(j=>j.status==="待派工"||j.status==="已派工");
+  const cleaning = active.filter(j=>j.status==="清床中");
+  const doneToday= jobList.filter(j=>j.status==="已完成" && j.completedAt>=todayStart);
+  const overdueNow = active.filter(j=>isOverdue(j,now)).length;
+
+  // 平均清床時間（今日完成：開始 → 完成）
+  const avgClean = doneToday.length
+    ? Math.round(doneToday.reduce((s,j)=>s+(j.completedAt-(j.startedAt||j.createdAt)),0)/doneToday.length/60000)
+    : 0;
+  // 病床周轉率 = 今日完成清床次數 ÷ 總床數
+  const turnover = Math.round(doneToday.length/BEDS.length*100);
+
+  // 清潔人員績效
+  const perf = CLEANERS.map(c=>{
+    const all  = jobList.filter(j=>j.assignedTo===c.id);
+    const done = all.filter(j=>j.status==="已完成"&&j.completedAt>=todayStart);
+    const avg  = done.length
+      ? Math.round(done.reduce((s,j)=>s+(j.completedAt-(j.startedAt||j.createdAt)),0)/done.length/60000):0;
+    return {
+      ...c,
+      doing: all.filter(j=>j.status==="已派工"||j.status==="清床中").length,
+      done: done.length, avg,
+      over: done.filter(j=>isOverdue(j,now)).length,
+    };
+  });
+
+  const STATUS_COLOR={ "待派工":"#8896a0","已派工":"#e0852b","清床中":"#2f7fd1","已完成":"#2f9e6e" };
+  const sorted=[...jobList].sort((a,b)=>b.createdAt-a.createdAt);
+
+  return (
+    <div>
+      <div className="kpis">
+        <Kpi label="待清床" num={pending.length} unit="床"/>
+        <Kpi label="清床中" num={cleaning.length} unit="床" color="var(--cleaning)"/>
+        <Kpi label="今日完成" num={doneToday.length} unit="件" color="var(--available)"/>
+        <Kpi label="平均清床時間" num={avgClean} unit="分鐘"/>
+        <Kpi label="目前超時案件" num={overdueNow} unit="件" color={overdueNow?"var(--urgent)":""}/>
+        <Kpi label="病床周轉率" num={turnover} unit="%"/>
+      </div>
+
+      <div className="card" style={{padding:"16px",marginBottom:"18px"}}>
+        <div className="toolbar" style={{marginBottom:"4px"}}>
+          <label className="switch">
+            <input type="checkbox" checked={settings.autoDispatch} onChange={toggleAuto}/>
+            <span className="track"></span>
+            AI 智能派工（自動依工作量、距離、急件、隔離資格綜合計分分派）
+          </label>
+          <button className="btn btn-ghost" onClick={reoptimize}>🔄 重新優化全部派工</button>
+        </div>
+        <span className="hint">
+          新工單會自動分派給綜合分數最佳的清潔人員；關閉後工單改進入「待接單」清單。
+          按「重新優化」會把所有尚未開始的工單依緊急度重新平衡分派一次。
+        </span>
+      </div>
+
+      <div className="card" style={{padding:"16px",marginBottom:"18px"}}>
+        <div className="section-title">📊 清潔人員績效（今日）</div>
+        <table>
+          <thead><tr><th>清潔人員</th><th>進行中</th><th>今日完成</th><th>平均清床時間</th><th>超時件數</th></tr></thead>
+          <tbody>
+            {perf.map(p=>(
+              <tr key={p.id}>
+                <td style={{fontWeight:800}}>{p.name}</td>
+                <td>{p.doing}</td>
+                <td>{p.done}</td>
+                <td>{p.avg} 分</td>
+                <td style={{color:p.over?"var(--urgent)":"inherit",fontWeight:p.over?800:600}}>{p.over}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card" style={{padding:"16px"}}>
+        <div className="section-title">🗂️ 派工清單</div>
+        {sorted.length===0 && <div className="empty">目前沒有清床工單</div>}
+        {sorted.length>0 &&
+          <table>
+            <thead><tr><th>床號</th><th>類型</th><th>狀態</th><th>負責人員</th><th>通知時間</th><th>等候/耗時</th></tr></thead>
+            <tbody>
+              {sorted.map(j=>{
+                const overdue=isOverdue(j,now);
+                const dur = j.status==="已完成"
+                  ? fmtDur(j.completedAt-j.createdAt)
+                  : fmtDur(now-j.createdAt);
+                return (
+                  <tr key={j.id}>
+                    <td style={{fontWeight:800}}>{j.bedId}</td>
+                    <td><span className="pill" style={{background:JOB_TYPES[j.type].color}}>{j.type}</span></td>
+                    <td><span className="pill" style={{background:STATUS_COLOR[j.status]}}>{j.status}</span></td>
+                    <td>
+                      {j.status==="已完成"
+                        ? cleanerName(j.assignedTo)
+                        : <select value={j.assignedTo} onChange={e=>reassign(j,e.target.value)}>
+                            <option value="">— 未指派 —</option>
+                            {CLEANERS.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>}
+                      {j.dispatchReason && j.status!=="已完成" &&
+                        <div className="hint" style={{marginTop:"3px",fontSize:"11px"}}>🤖 {j.dispatchReason}</div>}
+                    </td>
+                    <td>{fmtClock(j.createdAt)}</td>
+                    <td style={{color:overdue?"var(--urgent)":"inherit",fontWeight:overdue?800:600}}>
+                      {overdue?"⚠ ":""}{dur}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>}
+      </div>
+    </div>
+  );
+}
+function Kpi({label,num,unit,color}){
+  return (
+    <div className="card kpi">
+      <div className="label">{label}</div>
+      <div className="num" style={color?{color}:{}}>{num}<span className="unit"> {unit}</span></div>
+    </div>
+  );
+}
+
+function RoleSelector({onPick}){
+  const roles = [
+    { id:"ward",    icon:"🏥", title:"病房端",   who:"護理站 / 書記",
+      desc:"查看病床即時狀態、發出清床通知、登記新病人入住。" },
+    { id:"cleaner", icon:"🧹", title:"清潔人員", who:"清潔作業人員",
+      desc:"接收清床工單、回報病患未離床、紀錄清床完成時間。" },
+    { id:"manager", icon:"📊", title:"管理端",   who:"總務室 / 護理部",
+      desc:"即時儀表板、派工調整、AI 派工設定與人員績效管理。" },
+  ];
+  return (
+    <div className="role-select">
+      <h2>請選擇您的身分</h2>
+      <div className="sub2">{WARD_NAME} · 智慧清床管理平台</div>
+      <div className="role-cards">
+        {roles.map(r=>(
+          <button key={r.id} className="role-card" onClick={()=>onPick(r.id)}>
+            <div className="icon">{r.icon}</div>
+            <div className="role-title">{r.title}</div>
+            <div className="desc">{r.desc}</div>
+            <div className="who">使用者：{r.who}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
